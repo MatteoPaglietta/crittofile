@@ -22,3 +22,18 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# --- Dati privati dell'utente (MAI versionare) ---
+# File cifrati caricati nella libreria: anche se cifrati, non devono mai
+# finire in un repository pubblico/condiviso. Vengono ricreati automaticamente
+# dal backend al primo avvio (vedi server/db.js).
+/server/uploads/
+
+# Database SQLite locale: contiene i metadati della libreria personale.
+/server/*.db
+/server/*.db-journal
+/server/*.db-wal
+/server/*.db-shm
+*.sqlite
+*.sqlite3
+
