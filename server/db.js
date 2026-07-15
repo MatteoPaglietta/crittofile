@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,8 +17,8 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 
 const isNewDatabase = !fs.existsSync(DB_PATH);
 
-export const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
+export const db = new DatabaseSync(DB_PATH);
+db.exec('PRAGMA journal_mode = WAL');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS file_library (
