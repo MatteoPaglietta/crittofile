@@ -29,7 +29,7 @@ Il database e la cartella `uploads/` sono locali alla macchina e **non versionat
 
 ## Requisiti
 
-- **Node.js ≥ 22.5** (usa il modulo `node:sqlite` integrato in Node — nessuna dipendenza nativa da compilare, quindi non servono Python o build tools).
+- **Node.js ≥ 22.5** (usa il modulo `node:sqlite` integrato in Node — nessuna dipendenza nativa da compilare, quindi non servono Python o build tools). Segui il link per il download -> https://nodejs.org/en/download
 
 ## Avvio del progetto
 
