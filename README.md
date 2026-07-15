@@ -32,7 +32,9 @@ Il database e la cartella `uploads/` sono locali alla macchina e **non versionat
 - **Node.js ≥ 22.5** (usa il modulo `node:sqlite` integrato in Node — nessuna dipendenza nativa da compilare, quindi non servono Python o build tools). Segui il link per il download -> https://nodejs.org/en/download
 
 ## Avvio del progetto
-
+1. Apri il terminale
+2. Entra nella cartella del progetto unzippata
+3. Esegui i seguenti comandi:
 ```bash
 npm install
 npm run dev:all
@@ -42,7 +44,7 @@ Questo avvia insieme:
 - il frontend Vite su `http://localhost:5173`
 - il backend Express su `http://localhost:3001` (il dev server di Vite fa da proxy per `/api/*` verso questa porta, vedi `vite.config.js`)
 
-Apri `http://localhost:5173` nel browser.
+4. Apri `http://localhost:5173` nel browser.
 
 ### Comandi disponibili
 
