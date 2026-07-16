@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Eye, EyeOff, KeyRound } from 'lucide-react';
 
-export default function PasswordInput({ value, onChange, placeholder, id, autoComplete }) {
+export default function PasswordInput({ value, onChange, placeholder, id, autoComplete, autoFocus }) {
   const [visible, setVisible] = useState(false);
 
   return (
@@ -14,6 +14,7 @@ export default function PasswordInput({ value, onChange, placeholder, id, autoCo
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder || 'Password'}
         autoComplete={autoComplete || 'off'}
+        autoFocus={autoFocus}
         className="glass-input pl-10 pr-11"
       />
       <button

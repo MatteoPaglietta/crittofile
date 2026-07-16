@@ -11,10 +11,10 @@ import {
   RefreshCcw,
   Inbox,
 } from 'lucide-react';
-import PasswordInput from '../components/PasswordInput.jsx';
 import TextViewerModal from '../components/TextViewerModal.jsx';
-import { fetchFiles, downloadEncryptedFile, deleteFile } from '../lib/api.js';
-import { decryptFile, downloadBlob } from '../lib/crypto.js';
+import PasswordPromptModal from '../components/PasswordPromptModal.jsx';
+import { fetchFiles, downloadEncryptedFile, updateFileContent, deleteFile } from '../lib/api.js';
+import { decryptFile, encryptFile, downloadBlob } from '../lib/crypto.js';
 import { formatFileSize, formatDate, getExtension, isTextLikeFile } from '../lib/format.js';
 
 // Stato per-riga: idle | downloading-raw | success-raw | downloading | decrypting
@@ -23,9 +23,9 @@ export default function Library() {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [password, setPassword] = useState('');
   const [rowState, setRowState] = useState({});
-  const [viewer, setViewer] = useState(null); // { filename, text, buffer }
+  const [passwordPrompt, setPasswordPrompt] = useState(null); // { file }
+  const [viewer, setViewer] = useState(null); // { fileId, filename, content, password }
 
   const loadFiles = useCallback((signal) => {
     setLoading(true);
@@ -62,10 +62,15 @@ export default function Library() {
     }
   }
 
-  async function handleDecrypt(file) {
-    if (!password) {
-      return setRow(file.id, { phase: 'error', error: 'Inserisci prima la password di sblocco.' });
-    }
+  function requestUnlock(file) {
+    setRow(file.id, { error: '' });
+    setPasswordPrompt({ file });
+  }
+
+  // Invocata dal modale di sblocco: propaga l'errore per tenerlo aperto se la
+  // password è sbagliata, e lo chiude solo in caso di successo.
+  async function unlockAndDecrypt(password) {
+    const { file } = passwordPrompt;
     try {
       setRow(file.id, { phase: 'downloading', error: '' });
       const encryptedBlob = await downloadEncryptedFile(file.saved_filename);
@@ -75,16 +80,32 @@ export default function Library() {
 
       if (isTextLikeFile(file.original_name)) {
         const text = new TextDecoder('utf-8', { fatal: false }).decode(plainBuffer);
-        setViewer({ filename: file.original_name, text, buffer: plainBuffer });
+        setViewer({ fileId: file.id, filename: file.original_name, content: text, password });
         setRow(file.id, { phase: 'idle', error: '' });
       } else {
         downloadBlob(new Blob([plainBuffer]), file.original_name);
         setRow(file.id, { phase: 'success', error: '' });
         setTimeout(() => setRow(file.id, { phase: 'idle' }), 2000);
       }
+      setPasswordPrompt(null);
     } catch (err) {
-      setRow(file.id, { phase: 'error', error: err.message || 'Errore durante la decifratura.' });
+      setRow(file.id, { phase: 'idle' });
+      throw err;
     }
+  }
+
+  // Ricifra il testo modificato con la stessa password usata per aprirlo e
+  // sostituisce il contenuto sul server, mantenendo id e saved_filename.
+  async function handleSaveEdit(newText) {
+    const { fileId, password } = viewer;
+    const encryptedBlob = await encryptFile(new Blob([newText], { type: 'text/plain' }), password);
+    const updated = await updateFileContent(fileId, encryptedBlob);
+    setFiles((prev) =>
+      prev.map((f) =>
+        f.id === fileId ? { ...f, file_size: updated.file_size, upload_date: updated.upload_date } : f
+      )
+    );
+    setViewer((prev) => ({ ...prev, content: newText }));
   }
 
   async function handleDelete(file) {
@@ -118,21 +139,6 @@ export default function Library() {
         </button>
       </header>
 
-      <div className="glass-panel p-5">
-        <label htmlFor="unlock-password" className="mb-1.5 block text-xs font-medium text-slate-400">
-          Password di sblocco/decifratura
-        </label>
-        <PasswordInput
-          id="unlock-password"
-          value={password}
-          onChange={setPassword}
-          placeholder="Inserisci la password usata in fase di cifratura"
-        />
-        <p className="mt-2 text-xs text-slate-500">
-          Serve solo per "Decripta". Il download del file cifrato non richiede alcuna password.
-        </p>
-      </div>
-
       {loadError && (
         <div className="flex items-center gap-2 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           <AlertCircle className="h-4 w-4 shrink-0" />
@@ -154,7 +160,7 @@ export default function Library() {
             file={file}
             state={rowState[file.id] || { phase: 'idle' }}
             onDownloadRaw={() => handleDownloadRaw(file)}
-            onDecrypt={() => handleDecrypt(file)}
+            onDecrypt={() => requestUnlock(file)}
             onRequestDelete={() => setRow(file.id, { phase: 'confirm-delete' })}
             onCancelDelete={() => setRow(file.id, { phase: 'idle' })}
             onConfirmDelete={() => handleDelete(file)}
@@ -162,12 +168,21 @@ export default function Library() {
         ))}
       </div>
 
+      {passwordPrompt && (
+        <PasswordPromptModal
+          filename={passwordPrompt.file.original_name}
+          onConfirm={unlockAndDecrypt}
+          onCancel={() => setPasswordPrompt(null)}
+        />
+      )}
+
       {viewer && (
         <TextViewerModal
           filename={viewer.filename}
-          content={viewer.text}
+          content={viewer.content}
           onClose={() => setViewer(null)}
-          onDownload={() => downloadBlob(new Blob([viewer.buffer]), viewer.filename)}
+          onDownload={() => downloadBlob(new Blob([viewer.content]), viewer.filename)}
+          onSave={handleSaveEdit}
         />
       )}
     </div>

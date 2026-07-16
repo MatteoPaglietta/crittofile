@@ -1,19 +1,58 @@
-import { useEffect } from 'react';
-import { X, Download, FileText } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Download, FileText, Pencil, Save, Loader2, AlertCircle, Check } from 'lucide-react';
 
-export default function TextViewerModal({ filename, content, onClose, onDownload }) {
+export default function TextViewerModal({ filename, content, onClose, onDownload, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(content);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [saved, setSaved] = useState(false);
+
   useEffect(() => {
     function onKeyDown(event) {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape' && !editing) onClose();
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
+  }, [onClose, editing]);
+
+  // Il contenuto può cambiare dall'esterno dopo un salvataggio riuscito.
+  useEffect(() => {
+    setDraft(content);
+  }, [content]);
+
+  function startEditing() {
+    setDraft(content);
+    setSaveError('');
+    setSaved(false);
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setDraft(content);
+    setSaveError('');
+    setEditing(false);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError('');
+    try {
+      await onSave(draft);
+      setEditing(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setSaveError(err.message || 'Errore durante il salvataggio.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-      onClick={onClose}
+      onClick={editing ? undefined : onClose}
     >
       <div
         className="glass-panel flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden"
@@ -34,18 +73,60 @@ export default function TextViewerModal({ filename, content, onClose, onDownload
           </button>
         </div>
 
-        <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-5 text-sm leading-relaxed text-slate-200">
-          {content}
-        </pre>
+        {editing ? (
+          <textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            spellCheck={false}
+            autoFocus
+            className="min-h-0 flex-1 resize-none overflow-auto bg-transparent p-5 font-mono text-sm leading-relaxed text-slate-200 outline-none"
+          />
+        ) : (
+          <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-5 text-sm leading-relaxed text-slate-200">
+            {content}
+          </pre>
+        )}
+
+        {saveError && (
+          <div className="mx-5 mb-3 flex items-center gap-2 rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            {saveError}
+          </div>
+        )}
+
+        {saved && (
+          <div className="mx-5 mb-3 flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+            <Check className="h-3.5 w-3.5 shrink-0" />
+            Modifiche salvate e ricifrate.
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-3.5">
-          <button type="button" onClick={onClose} className="glass-btn">
-            Chiudi
-          </button>
-          <button type="button" onClick={onDownload} className="glass-btn-primary">
-            <Download className="h-4 w-4" />
-            Scarica file decifrato
-          </button>
+          {editing ? (
+            <>
+              <button type="button" onClick={cancelEditing} disabled={saving} className="glass-btn">
+                Annulla
+              </button>
+              <button type="button" onClick={handleSave} disabled={saving} className="glass-btn-primary">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {saving ? 'Salvataggio…' : 'Salva modifiche'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" onClick={onClose} className="glass-btn">
+                Chiudi
+              </button>
+              <button type="button" onClick={startEditing} className="glass-btn">
+                <Pencil className="h-4 w-4" />
+                Modifica
+              </button>
+              <button type="button" onClick={onDownload} className="glass-btn-primary">
+                <Download className="h-4 w-4" />
+                Scarica file decifrato
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

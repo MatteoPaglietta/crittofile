@@ -70,6 +70,14 @@ export async function downloadEncryptedFile(savedFilename, signal) {
   return response.blob();
 }
 
+/** Sostituisce il contenuto cifrato di un file già in libreria (salvataggio dopo modifica). */
+export async function updateFileContent(id, encryptedBlob) {
+  const formData = new FormData();
+  formData.append('file', encryptedBlob, 'content.enc');
+  const response = await fetch(`/api/files/${id}/content`, { method: 'PUT', body: formData });
+  return parseJsonOrThrow(response);
+}
+
 export async function deleteFile(id) {
   const response = await fetch(`/api/files/${id}`, { method: 'DELETE' });
   return parseJsonOrThrow(response);

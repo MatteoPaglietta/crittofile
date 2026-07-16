@@ -30,6 +30,14 @@ const upload = multer({
   limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
 });
 
+// Usato solo per sostituire il contenuto di un file già esistente: il blob
+// cifrato arriva in memoria e viene scritto direttamente sul saved_filename
+// già assegnato, senza generare un nuovo nome su disco.
+const updateUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
+});
+
 // GET /api/files - elenco dei file cifrati salvati nella libreria
 app.get('/api/files', (_req, res) => {
   const rows = db
@@ -82,6 +90,43 @@ app.get('/api/download/:filename', (req, res) => {
   }
 
   res.download(filePath, row.original_name + '.enc');
+});
+
+// PUT /api/files/:id/content - sostituisce il contenuto cifrato di un file
+// esistente (usato per il salvataggio dopo la modifica in-app), mantenendo
+// invariati id e saved_filename.
+app.put('/api/files/:id/content', updateUpload.single('file'), (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: 'ID non valido.' });
+  }
+  if (!req.file) {
+    return res.status(400).json({ error: 'Nessun file ricevuto.' });
+  }
+
+  const row = db.prepare('SELECT * FROM file_library WHERE id = ?').get(id);
+  if (!row) {
+    return res.status(404).json({ error: 'File non trovato.' });
+  }
+
+  const filePath = path.join(UPLOADS_DIR, row.saved_filename);
+  fs.writeFile(filePath, req.file.buffer, (err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Errore durante il salvataggio del file.' });
+    }
+    db.prepare("UPDATE file_library SET file_size = ?, upload_date = datetime('now') WHERE id = ?").run(
+      req.file.size,
+      id
+    );
+    const updated = db.prepare('SELECT * FROM file_library WHERE id = ?').get(id);
+    res.json({
+      id: updated.id,
+      original_name: updated.original_name,
+      saved_filename: updated.saved_filename,
+      file_size: updated.file_size,
+      upload_date: updated.upload_date,
+    });
+  });
 });
 
 // DELETE /api/files/:id - rimuove il file dal disco e dal database
