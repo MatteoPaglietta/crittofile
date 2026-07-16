@@ -129,6 +129,35 @@ app.put('/api/files/:id/content', updateUpload.single('file'), (req, res) => {
   });
 });
 
+// PUT /api/files/:id/rename - cambia solo il nome visualizzato (metadato in
+// chiaro), il blob cifrato su disco non viene toccato. La verifica della
+// password avviene lato client provando a decifrare prima di chiamare questa rotta.
+app.put('/api/files/:id/rename', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: 'ID non valido.' });
+  }
+  const originalName = req.body?.originalName;
+  if (!originalName || typeof originalName !== 'string' || !originalName.trim()) {
+    return res.status(400).json({ error: 'Nome file mancante.' });
+  }
+
+  const row = db.prepare('SELECT * FROM file_library WHERE id = ?').get(id);
+  if (!row) {
+    return res.status(404).json({ error: 'File non trovato.' });
+  }
+
+  const trimmedName = originalName.trim();
+  db.prepare('UPDATE file_library SET original_name = ? WHERE id = ?').run(trimmedName, id);
+  res.json({
+    id: row.id,
+    original_name: trimmedName,
+    saved_filename: row.saved_filename,
+    file_size: row.file_size,
+    upload_date: row.upload_date,
+  });
+});
+
 // DELETE /api/files/:id - rimuove il file dal disco e dal database
 app.delete('/api/files/:id', (req, res) => {
   const id = Number(req.params.id);

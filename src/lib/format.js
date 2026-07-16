@@ -36,3 +36,32 @@ const TEXT_EXTENSIONS = new Set([
 export function isTextLikeFile(filename) {
   return TEXT_EXTENSIONS.has(getExtension(filename).toLowerCase());
 }
+
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico']);
+
+/** Estensioni per cui ha senso un'anteprima immagine in-app. */
+export function isImageFile(filename) {
+  return IMAGE_EXTENSIONS.has(getExtension(filename).toLowerCase());
+}
+
+/** True per i PDF, previsualizzabili ma non modificabili in-app. */
+export function isPdfFile(filename) {
+  return getExtension(filename).toLowerCase() === 'pdf';
+}
+
+const MIME_TYPES = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+  ico: 'image/x-icon',
+  pdf: 'application/pdf',
+};
+
+/** Mime type dedotto dall'estensione: il blob decifrato non ne ha uno proprio. */
+export function getMimeType(filename) {
+  return MIME_TYPES[getExtension(filename).toLowerCase()] || 'application/octet-stream';
+}

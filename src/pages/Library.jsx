@@ -3,6 +3,7 @@ import {
   FileIcon,
   Download,
   Unlock,
+  Pencil,
   Trash2,
   Check,
   X,
@@ -11,11 +12,20 @@ import {
   RefreshCcw,
   Inbox,
 } from 'lucide-react';
-import TextViewerModal from '../components/TextViewerModal.jsx';
+import FilePreviewModal from '../components/FilePreviewModal.jsx';
 import PasswordPromptModal from '../components/PasswordPromptModal.jsx';
-import { fetchFiles, downloadEncryptedFile, updateFileContent, deleteFile } from '../lib/api.js';
+import RenamePromptModal from '../components/RenamePromptModal.jsx';
+import { fetchFiles, downloadEncryptedFile, updateFileContent, renameFile, deleteFile } from '../lib/api.js';
 import { decryptFile, encryptFile, downloadBlob } from '../lib/crypto.js';
-import { formatFileSize, formatDate, getExtension, isTextLikeFile } from '../lib/format.js';
+import {
+  formatFileSize,
+  formatDate,
+  getExtension,
+  isTextLikeFile,
+  isImageFile,
+  isPdfFile,
+  getMimeType,
+} from '../lib/format.js';
 
 // Stato per-riga: idle | downloading-raw | success-raw | downloading | decrypting
 //                | success | error | confirm-delete | deleting
@@ -25,7 +35,10 @@ export default function Library() {
   const [loadError, setLoadError] = useState('');
   const [rowState, setRowState] = useState({});
   const [passwordPrompt, setPasswordPrompt] = useState(null); // { file }
-  const [viewer, setViewer] = useState(null); // { fileId, filename, content, password }
+  const [renamePrompt, setRenamePrompt] = useState(null); // { file }
+  // kind 'text': { kind, fileId, filename, content, password } — content è una stringa, editabile
+  // kind 'image'|'pdf': { kind, filename, content, blob } — content è un object URL, sola anteprima
+  const [viewer, setViewer] = useState(null);
 
   const loadFiles = useCallback((signal) => {
     setLoading(true);
@@ -80,7 +93,17 @@ export default function Library() {
 
       if (isTextLikeFile(file.original_name)) {
         const text = new TextDecoder('utf-8', { fatal: false }).decode(plainBuffer);
-        setViewer({ fileId: file.id, filename: file.original_name, content: text, password });
+        setViewer({ kind: 'text', fileId: file.id, filename: file.original_name, content: text, password });
+        setRow(file.id, { phase: 'idle', error: '' });
+      } else if (isImageFile(file.original_name) || isPdfFile(file.original_name)) {
+        const blob = new Blob([plainBuffer], { type: getMimeType(file.original_name) });
+        const objectUrl = URL.createObjectURL(blob);
+        setViewer({
+          kind: isPdfFile(file.original_name) ? 'pdf' : 'image',
+          filename: file.original_name,
+          content: objectUrl,
+          blob,
+        });
         setRow(file.id, { phase: 'idle', error: '' });
       } else {
         downloadBlob(new Blob([plainBuffer]), file.original_name);
@@ -92,6 +115,13 @@ export default function Library() {
       setRow(file.id, { phase: 'idle' });
       throw err;
     }
+  }
+
+  // Chiude il modale di anteprima e libera l'object URL del blob (image/pdf),
+  // altrimenti resterebbe agganciato in memoria finché la pagina non ricarica.
+  function closeViewer() {
+    if (viewer?.content && viewer.kind !== 'text') URL.revokeObjectURL(viewer.content);
+    setViewer(null);
   }
 
   // Ricifra il testo modificato con la stessa password usata per aprirlo e
@@ -106,6 +136,25 @@ export default function Library() {
       )
     );
     setViewer((prev) => ({ ...prev, content: newText }));
+  }
+
+  function requestRename(file) {
+    setRow(file.id, { error: '' });
+    setRenamePrompt({ file });
+  }
+
+  // La password non serve per il rename in sé (il nome è un metadato in
+  // chiaro): viene usata per decifrare il file e verificare che chi rinomina
+  // ne conosca davvero la password, prima di modificarne il nome.
+  async function handleRename(newName, password) {
+    const { file } = renamePrompt;
+    const encryptedBlob = await downloadEncryptedFile(file.saved_filename);
+    await decryptFile(encryptedBlob, password);
+    const updated = await renameFile(file.id, newName);
+    setFiles((prev) =>
+      prev.map((f) => (f.id === file.id ? { ...f, original_name: updated.original_name } : f))
+    );
+    setRenamePrompt(null);
   }
 
   async function handleDelete(file) {
@@ -161,6 +210,7 @@ export default function Library() {
             state={rowState[file.id] || { phase: 'idle' }}
             onDownloadRaw={() => handleDownloadRaw(file)}
             onDecrypt={() => requestUnlock(file)}
+            onRename={() => requestRename(file)}
             onRequestDelete={() => setRow(file.id, { phase: 'confirm-delete' })}
             onCancelDelete={() => setRow(file.id, { phase: 'idle' })}
             onConfirmDelete={() => handleDelete(file)}
@@ -176,20 +226,43 @@ export default function Library() {
         />
       )}
 
+      {renamePrompt && (
+        <RenamePromptModal
+          filename={renamePrompt.file.original_name}
+          onConfirm={handleRename}
+          onCancel={() => setRenamePrompt(null)}
+        />
+      )}
+
       {viewer && (
-        <TextViewerModal
+        <FilePreviewModal
+          kind={viewer.kind}
           filename={viewer.filename}
           content={viewer.content}
-          onClose={() => setViewer(null)}
-          onDownload={() => downloadBlob(new Blob([viewer.content]), viewer.filename)}
-          onSave={handleSaveEdit}
+          onClose={closeViewer}
+          onDownload={() =>
+            downloadBlob(
+              viewer.kind === 'text' ? new Blob([viewer.content]) : viewer.blob,
+              viewer.filename
+            )
+          }
+          onSave={viewer.kind === 'text' ? handleSaveEdit : undefined}
         />
       )}
     </div>
   );
 }
 
-function FileCard({ file, state, onDownloadRaw, onDecrypt, onRequestDelete, onCancelDelete, onConfirmDelete }) {
+function FileCard({
+  file,
+  state,
+  onDownloadRaw,
+  onDecrypt,
+  onRename,
+  onRequestDelete,
+  onCancelDelete,
+  onConfirmDelete,
+}) {
   const busy =
     state.phase === 'downloading-raw' ||
     state.phase === 'downloading' ||
@@ -288,6 +361,16 @@ function FileCard({ file, state, onDownloadRaw, onDecrypt, onRequestDelete, onCa
             ) : (
               <Download className="h-4 w-4" />
             )}
+          </button>
+          <button
+            type="button"
+            onClick={onRename}
+            disabled={busy}
+            className="glass-btn !px-3"
+            aria-label="Rinomina file"
+            title="Rinomina file (richiede la password)"
+          >
+            <Pencil className="h-4 w-4" />
           </button>
           <button
             type="button"

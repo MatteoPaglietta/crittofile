@@ -78,6 +78,16 @@ export async function updateFileContent(id, encryptedBlob) {
   return parseJsonOrThrow(response);
 }
 
+/** Cambia solo il nome visualizzato del file (metadato in chiaro). */
+export async function renameFile(id, originalName) {
+  const response = await fetch(`/api/files/${id}/rename`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ originalName }),
+  });
+  return parseJsonOrThrow(response);
+}
+
 export async function deleteFile(id) {
   const response = await fetch(`/api/files/${id}`, { method: 'DELETE' });
   return parseJsonOrThrow(response);
